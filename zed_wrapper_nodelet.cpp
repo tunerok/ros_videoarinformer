@@ -1241,6 +1241,14 @@ namespace zed_wrapper {
         }
     }
 
+//for find center of point2
+    cv::Point2f find_core(cv::Point2f point1, cv::Point2f point3){
+	cv::Point2f out;
+	out.x = (point1.x + point3.x)/2;
+	out.y = (point1.y + point3.y)/2; 
+	return out;
+		
+}
     void ZEDWrapperNodelet::device_poll() {
         ros::Rate loop_rate(frameRate);
 
@@ -1266,8 +1274,15 @@ namespace zed_wrapper {
         confImRGB = cv::Mat(cvSize, CV_8UC3);
         confMapFloat = cv::Mat(cvSize, CV_32FC1);
         cv::Mat tempIm = cv::Mat(cvSize, CV_8UC3);//my
-	cv::Mat localIm;
-	localIm = cv::imread("/home/nvidia/Atr_ws/1.jpg");
+	cv::Mat localIm, sm_test;
+	localIm = cv::imread("/home/nvidia/Atr_ws/1.jpg");//, -1); //load img data
+	sm_test = cv::imread("/home/nvidia/Atr_ws/2.jpg");//, -1);
+//sm_test = cv::imread("/home/nvidia/Atr_ws/2.png", -1);//test png
+	
+//if ((!localIm.data) || (!sm_test.data)) //check data aval
+//{
+//	NODELET_WARN_STREAM("Could not open or find image!");
+//}
 	//markers
 //vector<int> markerIds; 
 //vector<vector<cv::Point2d> > markerCorners, rejectedCandidates; 
@@ -1277,6 +1292,13 @@ int fontFace = 3;
 double fontScale = 1;
 int thickness = 3;
 cv::Scalar scColor = cv::Scalar(0,0,255);
+std::vector<int> ids,ids_temp;
+cv::Point2f myPoint, myPoint_img;
+    std::vector<std::vector<cv::Point2f> > corners, rejected, corners_temp, rejected_temp;
+    std::vector<cv::Vec3d> rvecs, tvecs;
+    cv::Ptr<cv::aruco::DetectorParameters> detectorParam = cv::aruco::DetectorParameters::create();
+int count_1 = 0;//image counter
+int count_2 = 0;//LP filter
 	//markers
 //vector<int> markerIds; 
 //vector<vector<cv::Point2f> > markerCorners, rejectedCandidates; 
@@ -1509,36 +1531,75 @@ cv::Scalar scColor = cv::Scalar(0,0,255);
                     zed.retrieveImage(rightZEDMat, sl::VIEW_RIGHT_UNRECTIFIED, sl::MEM_CPU,
                                       matWidth, matHeight);
                     cv::cvtColor(sl_tools::toCVMat(rightZEDMat), rightImRGB, CV_RGBA2RGB);
-localIm.copyTo(tempIm);
+rightImRGB.copyTo(tempIm);
 //rightImRGB.copyTo(tempIm);
 	//markers
 //vector<int> markerIds; 
 //vector<vector<cv::Point2d> > markerCorners, rejectedCandidates; 
 //cv::Ptr<cv::aruco::DetectorParameters> parameters;
 //cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_1000); 
-    std::vector<int> ids;
-    std::vector<std::vector<cv::Point2f> > corners, rejected;
-    std::vector<cv::Vec3d> rvecs, tvecs;
-    cv::Ptr<cv::aruco::DetectorParameters> detectorParam = cv::aruco::DetectorParameters::create();
-    cv::aruco::detectMarkers(tempIm, dictionary, corners, ids, detectorParam, rejected);
+    //std::vector<int> ids;
+    //std::vector<std::vector<cv::Point2f> > corners, rejected;
+    //std::vector<cv::Vec3d> rvecs, tvecs;
+    //cv::Ptr<cv::aruco::DetectorParameters> detectorParam = cv::aruco::DetectorParameters::create();
+	count_1 ++;
+if (count_1 == 4){
+	count_1 = 0;
+
+    cv::aruco::detectMarkers(tempIm, dictionary, corners_temp, ids_temp, detectorParam, rejected_temp);
     // if at least one marker detected
-    if (ids.size() > 0){
-        cv::aruco::drawDetectedMarkers(tempIm, corners, ids);
+
+    if (ids_temp.size() > 0){
+	count_2 = 0;
+	corners = corners_temp;
+	ids = ids_temp;
+	rejected = rejected_temp;
+}
+   else{
+	count_2 ++;
+	if (count_2 > 2){
+	NODELET_INFO("ne vidno nihuya");
+	count_2 = 0;
+	corners = corners_temp;
+	ids = ids_temp;
+	rejected = rejected_temp;
+}
+}
+}
+if(ids.size() > 0){
+ //       cv::aruco::drawDetectedMarkers(tempIm, corners, ids);
 	 for(int i = 0; i < ids.size(); i++){
               if(ids[i] == 2){
-		   cv::putText(tempIm, "this is LEFT corner of the Second marker", corners[i][1], fontFace,fontScale, scColor, thickness, 8);
+		   //cv::putText(tempIm, "this is LEFT corner of the Second marker", corners[i][1], fontFace,fontScale, scColor, thickness, 8);
 //  cv::addText(tempIm, "Левый угол второго тест", corners[i][1], cv::fontQt ("Times", 30, cv::Scalar (0, 0, 0), CV_FONT_NORMAL));                 
-                break;   
+               // break;   
                }
+		else if (ids[i] == 18){
+			myPoint = find_core(corners[i][1], corners[i][3]);
+			cv::circle(tempIm, myPoint, 4, scColor, -1, 8, 0);
+			 myPoint_img.y = myPoint.y - 100;
+			 myPoint_img.x = myPoint.x + 100;	
+			if (myPoint.y - 100 - sm_test.rows < 1)
+				myPoint_img.y = myPoint.y + 100;
+			if (myPoint.x - 100 - sm_test.cols < 1)
+				myPoint_img.x = myPoint.y + 100;
+			if (myPoint.x + 100 + sm_test.cols > tempIm.cols)
+				myPoint_img.x = myPoint.x - 100;
+			if (myPoint.y + 100 + sm_test.rows > tempIm.rows)
+                                myPoint_img.y = myPoint.y - 100;
+
+		cv::line(tempIm, myPoint, myPoint_img, scColor, 2);
+
+			sm_test.copyTo(tempIm(cv::Rect(myPoint_img.x, myPoint_img.y, sm_test.cols, sm_test.rows)));
+		}
 	
           }
 }
-else{
-NODELET_INFO("ne vidno nihuya");}
  //if(rejected.size()>0)
 //    cv::aruco::drawDetectedMarkers(tempIm, rejected, cv::noArray(), cv::Scalar(100, 0, 255));
 
 //
+
                     publishCamInfo(rightCamInfoRawMsg, pubRightCamInfoRaw, t);
                     publishImage(tempIm, pubRawRight, rightCamOptFrameId, t);
                 }
